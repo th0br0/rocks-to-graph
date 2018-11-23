@@ -111,10 +111,12 @@ public class RocksDBImporter implements Runnable {
       long txCount = rdbInst.getLongProperty(rdbCFHandles.get("transaction"), "rocksdb.estimate-num-keys");
       LOG.info("Estimated transaction count: " + txCount);
 
+      Map<String, Object> hashToID = new HashMap<>();
+
       // Genesis
       {
         String all9 = Strings.repeat("9", 81);
-        graph.addV("transaction")
+        Vertex vx = graph.addV("transaction")
             .property("hash", all9)
             .property("address", all9)
             .property("bundle", all9)
@@ -123,10 +125,9 @@ public class RocksDBImporter implements Runnable {
             .property("value", 0)
             .property("timestamp", 0)
             .property("attachmentTimestamp", 0).next();
+
+        hashToID.put(all9, vx.id());
       }
-
-
-      Map<String, Object> hashToID = new HashMap<>();
 
       // Vertices
       for (iter.seekToFirst(); iter.isValid(); iter.next()) {
@@ -149,7 +150,7 @@ public class RocksDBImporter implements Runnable {
 
         hashToID.put(iotaTx.getHash(), vx.id());
 
-        if (count % 1000L == 0) {
+        if (count % 10000L == 0) {
           graph.tx().commit();
           LOG.info("Persisted " + count + " vertices.");
         }
@@ -182,7 +183,7 @@ public class RocksDBImporter implements Runnable {
             .property("refKind", 1)
             .from("a").next();
 
-        if (count % 1000L == 0) {
+        if (count % 10000L == 0) {
           graph.tx().commit();
           LOG.info("Persisted " + 2 * count + " edges.");
         }
