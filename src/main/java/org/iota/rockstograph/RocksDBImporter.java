@@ -4,7 +4,7 @@ import com.google.common.base.Strings;
 import jota.model.Transaction;
 import jota.utils.Converter;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
-import org.apache.tinkerpop.gremlin.structure.T;
+import org.apache.tinkerpop.gremlin.structure.Vertex;
 import org.janusgraph.core.*;
 import org.janusgraph.core.schema.JanusGraphManagement;
 import org.rocksdb.*;
@@ -87,6 +87,7 @@ public class RocksDBImporter implements Runnable {
 
     management.makeVertexLabel("transaction").make();
 
+    management.makePropertyKey("hash").dataType(String.class).make();
     management.makePropertyKey("address").dataType(String.class).make();
     management.makePropertyKey("bundle").dataType(String.class).make();
     management.makePropertyKey("tag").dataType(String.class).make();
@@ -113,7 +114,8 @@ public class RocksDBImporter implements Runnable {
       // Genesis
       {
         String all9 = Strings.repeat("9", 81);
-        graph.addV(all9)
+        graph.addV("transaction")
+            .property("hash", all9)
             .property("address", all9)
             .property("bundle", all9)
             .property("tag", all9.substring(0, 27))
@@ -123,6 +125,9 @@ public class RocksDBImporter implements Runnable {
             .property("attachmentTimestamp", 0).next();
       }
 
+
+      Map<String, Object> hashToID = new HashMap<>();
+
       // Vertices
       for (iter.seekToFirst(); iter.isValid(); iter.next()) {
         count++;
@@ -131,7 +136,8 @@ public class RocksDBImporter implements Runnable {
         Converter.getTrits(transactionData, txTrits);
         Transaction iotaTx = Transaction.asTransactionObject(Converter.trytes(txTrits));
 
-        graph.addV(iotaTx.getHash())
+        Vertex vx = graph.addV("transaction")
+            .property("hash", iotaTx.getHash())
             .property("address", iotaTx.getAddress())
             .property("bundle", iotaTx.getBundle())
             .property("tag", iotaTx.getObsoleteTag())
@@ -140,6 +146,8 @@ public class RocksDBImporter implements Runnable {
             .property("timestamp", iotaTx.getTimestamp())
             .property("attachmentTimestamp", iotaTx.getAttachmentTimestamp()).next();
 
+
+        hashToID.put(iotaTx.getHash(), vx.id());
 
         if (count % 1000L == 0) {
           graph.tx().commit();
@@ -159,17 +167,17 @@ public class RocksDBImporter implements Runnable {
         Transaction iotaTx = Transaction.asTransactionObject(Converter.trytes(txTrits));
 
         graph
-            .V().has(T.label, iotaTx.getHash())
+            .V(hashToID.get(iotaTx.getHash()))
             .as("a")
-            .V().has(T.label, iotaTx.getTrunkTransaction())
+            .V(hashToID.get(iotaTx.getTrunkTransaction()))
             .addE("ref")
             .property("refKind", 0)
             .from("a").next();
 
         graph
-            .V().has(T.label, iotaTx.getHash())
+            .V(hashToID.get(iotaTx.getHash()))
             .as("a")
-            .V().has(T.label, iotaTx.getBranchTransaction())
+            .V(hashToID.get(iotaTx.getBranchTransaction()))
             .addE("ref")
             .property("refKind", 1)
             .from("a").next();
